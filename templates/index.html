@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Spectrum Analyzer</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e;
+            min-height: 100vh;
+            padding: 20px;
+            color: #cccccc;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #252526;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            overflow: hidden;
+            border: 1px solid #3c3c3c;
+        }
+
+        .header {
+            background: #2d2d30;
+            color: #cccccc;
+            padding: 30px;
+            text-align: center;
+            border-bottom: 1px solid #3c3c3c;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            color: #ffffff;
+        }
+
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 140px);
+        }
+
+        .sidebar {
+            width: 320px;
+            background: #252526;
+            padding: 25px;
+            overflow-y: auto;
+            border-right: 1px solid #3c3c3c;
+        }
+
+        .content {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+            background: #1e1e1e;
+        }
+
+        .section {
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #3c3c3c;
+        }
+
+        .section h3 {
+            color: #4ec9b0;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            color: #cccccc;
+            font-size: 0.9em;
+        }
+
+        input[type="number"],
+        input[type="file"],
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #3c3c3c;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+            background: #3c3c3c;
+            color: #cccccc;
+        }
+
+        input[type="number"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #007acc;
+            background: #2d2d30;
+        }
+
+        input[type="file"]::file-selector-button {
+            background: #0e639c;
+            color: #ffffff;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        input[type="file"]::file-selector-button:hover {
+            background: #1177bb;
+        }
+
+        input[type="checkbox"] {
+            margin-right: 8px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #007acc;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        button {
+            background: #0e639c;
+            color: #ffffff;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            width: 100%;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #1177bb;
+        }
+
+        button:active {
+            background: #0e639c;
+        }
+
+        button:disabled {
+            background: #3c3c3c;
+            color: #6c6c6c;
+            cursor: not-allowed;
+        }
+
+        .metric-card {
+            background: #2d2d30;
+            color: #cccccc;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            text-align: center;
+            border: 1px solid #3c3c3c;
+        }
+
+        .metric-label {
+            font-size: 0.85em;
+            opacity: 0.8;
+            margin-bottom: 5px;
+            color: #9cdcfe;
+        }
+
+        .metric-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #ffffff;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .plot-container {
+            background: #252526;
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            border: 1px solid #3c3c3c;
+        }
+
+        .plot-title {
+            font-size: 1.5em;
+            color: #ffffff;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #007acc;
+        }
+
+        .info-box {
+            background: #1e3a4d;
+            border-left: 4px solid #4ec9b0;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            color: #cccccc;
+        }
+
+        .info-box h3 {
+            color: #4ec9b0;
+            margin-bottom: 10px;
+        }
+
+        .info-box ol, .info-box ul {
+            color: #cccccc;
+        }
+
+        .error-box {
+            background: #3d1f1f;
+            border-left: 4px solid #f48771;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            color: #f48771;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #3c3c3c;
+            border-top: 4px solid #007acc;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .help-text {
+            font-size: 0.85em;
+            color: #858585;
+            margin-top: 4px;
+            font-style: italic;
+        }
+
+        .file-info {
+            background: #2d2d30;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-size: 0.9em;
+            border: 1px solid #3c3c3c;
+        }
+
+        #results {
+            display: none;
+        }
+
+        #results.active {
+            display: block;
+        }
+
+        .json-params {
+            background: #2d2d30;
+            border: 1px solid #007acc;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+
+        .json-params h4 {
+            color: #4ec9b0;
+            margin-bottom: 10px;
+        }
+
+        .param-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+        }
+
+        .param-item {
+            font-size: 0.9em;
+            color: #cccccc;
+        }
+
+        .param-item strong {
+            color: #9cdcfe;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Real-Time Spectrum Analyzer</h1>
+            <p>Upload a signal file and analyze frequency content using FFT with customizable parameters</p>
+        </div>
+
+        <div class="main-content">
+            <div class="sidebar">
+                <div class="section">
+                    <h3>File Upload</h3>
+                    <div class="form-group">
+                        <label for="signal_file">Signal File</label>
+                        <input type="file" id="signal_file" accept=".npy,.raw,.wav">
+                        <p class="help-text">Supported: .npy, .raw, .wav</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="json_file">Parameter File (Optional)</label>
+                        <input type="file" id="json_file" accept=".json">
+                        <p class="help-text">JSON with generation parameters</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="sample_rate">Sample Rate (Hz)</label>
+                        <input type="number" id="sample_rate" value="2000000" min="1000" max="10000000" step="10000">
+                    </div>
+                    <button id="uploadBtn">Upload & Load</button>
+                </div>
+
+                <div class="section">
+                    <h3>FFT Settings</h3>
+                    <div class="form-group">
+                        <label for="window_type">Window Function</label>
+                        <select id="window_type">
+                            <option value="hanning" selected>Hanning</option>
+                            <option value="hamming">Hamming</option>
+                            <option value="blackman">Blackman</option>
+                            <option value="bartlett">Bartlett</option>
+                            <option value="rectangular">Rectangular</option>
+                            <option value="kaiser">Kaiser</option>
+                            <option value="gaussian">Gaussian</option>
+                            <option value="tukey">Tukey</option>
+                            <option value="flattop">Flat Top</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="use_db" checked>
+                            Display in dB
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label for="zp_factor">Zero-Pad Factor</label>
+                        <input type="number" id="zp_factor" value="4.0" min="1.0" max="16.0" step="0.5">
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="use_custom_nfft">
+                            Use Custom NFFT
+                        </label>
+                    </div>
+                    <div class="form-group" id="nfft_group" style="display:none;">
+                        <label for="nfft">NFFT Size</label>
+                        <input type="number" id="nfft" value="262144" min="128" max="1048576" step="1024">
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>Segmentation</h3>
+                    <div class="form-group">
+                        <label for="num_segments">Number of Segments</label>
+                        <input type="number" id="num_segments" value="10" min="1" max="1000" step="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="window_size_sec">Window Size (seconds)</label>
+                        <input type="number" id="window_size_sec" value="0.1" min="0.001" max="10.0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label for="step_size_sec">Step Size (seconds)</label>
+                        <input type="number" id="step_size_sec" value="0.01" min="0.001" max="10.0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="use_stft">
+                            Use STFT Mode
+                        </label>
+                        <p class="help-text">STFT: sliding windows, STORI: expanding windows</p>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>Display Settings</h3>
+                    <div class="form-group">
+                        <label for="center_freq">Center Frequency (Hz)</label>
+                        <input type="number" id="center_freq" value="15000" min="0" max="1000000" step="100">
+                    </div>
+                    <div class="form-group">
+                        <label for="freq_band">Frequency Band (±Hz)</label>
+                        <input type="number" id="freq_band" value="1000" min="10" max="100000" step="100">
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>Peak Detection</h3>
+                    <div class="form-group">
+                        <label for="peak_threshold">Peak Threshold</label>
+                        <input type="number" id="peak_threshold" value="10.0" min="0" max="50" step="1">
+                        <p class="help-text" id="peak_threshold_unit">dB above mean</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="peak_min_distance">Min Peak Distance (bins)</label>
+                        <input type="number" id="peak_min_distance" value="8" min="1" max="50" step="1">
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>Smoothing</h3>
+                    <div class="form-group">
+                        <label for="smooth_window">Smoothing Window</label>
+                        <input type="number" id="smooth_window" value="11" min="3" max="51" step="2">
+                    </div>
+                    <div class="form-group">
+                        <label for="smooth_polyorder">Polynomial Order</label>
+                        <input type="number" id="smooth_polyorder" value="3" min="1" max="5" step="1">
+                    </div>
+                </div>
+
+                <button id="analyzeBtn" disabled>Analyze Signal</button>
+            </div>
+
+            <div class="content">
+                <div id="welcome" class="info-box">
+                    <h3>Welcome to Spectrum Analyzer</h3>
+                    <p><strong>Getting Started:</strong></p>
+                    <ol style="margin-left: 20px; margin-top: 10px;">
+                        <li>Upload a signal file (.npy, .raw, or .wav) using the sidebar</li>
+                        <li>Adjust analysis parameters as needed</li>
+                        <li>Click "Analyze Signal" to process</li>
+                    </ol>
+                    <p style="margin-top: 15px;"><strong>Features:</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 5px;">
+                        <li>FFT analysis with multiple window functions</li>
+                        <li>Zero-padding for improved frequency resolution</li>
+                        <li>Multi-segment analysis (STFT/STORI modes)</li>
+                        <li>Peak detection with smoothing</li>
+                        <li>Interactive visualizations</li>
+                    </ul>
+                </div>
+
+                <div id="loading" class="loading">
+                    <div class="spinner"></div>
+                    <p>Processing your signal...</p>
+                </div>
+
+                <div id="error" class="error-box" style="display:none;"></div>
+
+                <div id="results">
+                    <div class="metrics-grid" id="signalMetrics"></div>
+                    
+                    <div id="jsonParams" style="display:none;"></div>
+
+                    <div class="plot-container">
+                        <h3 class="plot-title">Original Signal (Time Domain)</h3>
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="show_full_signal">
+                                Show Complete Signal (downsampled)
+                            </label>
+                        </div>
+                        <div id="timeControls" style="margin: 15px 0;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                <div>
+                                    <label for="start_time">Start Time (seconds)</label>
+                                    <input type="number" id="start_time" value="0" min="0" step="0.001">
+                                </div>
+                                <div>
+                                    <label for="num_display_points">Number of Points</label>
+                                    <input type="number" id="num_display_points" value="10000" min="100" max="100000" step="1000">
+                                </div>
+                            </div>
+                        </div>
+                        <div id="timePlot"></div>
+                    </div>
+
+                    <div id="spectrumPlots"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let uploadedFile = false;
+
+        // Plotly configuration for interactive plots
+        const plotlyConfig = {
+            responsive: true,
+            displayModeBar: true,
+            modeBarButtonsToAdd: ['drawopenpath', 'eraseshape'],
+            modeBarButtonsToRemove: [],
+            displaylogo: false,
+            toImageButtonOptions: {
+                format: 'png',
+                filename: 'spectrum_plot',
+                height: 1080,
+                width: 1920,
+                scale: 2
+            }
+        };
+
+        // Update NFFT visibility
+        document.getElementById('use_custom_nfft').addEventListener('change', function() {
+            document.getElementById('nfft_group').style.display = this.checked ? 'block' : 'none';
+        });
+
+        // Update peak threshold unit
+        document.getElementById('use_db').addEventListener('change', function() {
+            const unit = this.checked ? 'dB above mean' : '× mean magnitude';
+            document.getElementById('peak_threshold_unit').textContent = unit;
+            if (!this.checked) {
+                document.getElementById('peak_threshold').value = '2.0';
+                document.getElementById('peak_threshold').max = '10';
+                document.getElementById('peak_threshold').step = '0.1';
+            } else {
+                document.getElementById('peak_threshold').value = '10.0';
+                document.getElementById('peak_threshold').max = '50';
+                document.getElementById('peak_threshold').step = '1';
+            }
+        });
+
+        // Upload file
+        document.getElementById('uploadBtn').addEventListener('click', async function() {
+            const signalFile = document.getElementById('signal_file').files[0];
+            if (!signalFile) {
+                alert('Please select a signal file');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('signal_file', signalFile);
+            
+            const jsonFile = document.getElementById('json_file').files[0];
+            if (jsonFile) {
+                formData.append('json_file', jsonFile);
+            }
+
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('welcome').style.display = 'none';
+            document.getElementById('error').style.display = 'none';
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    uploadedFile = true;
+                    document.getElementById('analyzeBtn').disabled = false;
+                    document.getElementById('welcome').style.display = 'block';
+                    document.getElementById('welcome').innerHTML = `
+                        <h3>File Uploaded Successfully</h3>
+                        <p><strong>Filename:</strong> ${data.filename}</p>
+                        <p>Click "Analyze Signal" to process the file.</p>
+                    `;
+                } else {
+                    throw new Error(data.error || 'Upload failed');
+                }
+            } catch (error) {
+                document.getElementById('error').textContent = 'Error: ' + error.message;
+                document.getElementById('error').style.display = 'block';
+            } finally {
+                document.getElementById('loading').classList.remove('active');
+            }
+        });
+
+        // Analyze signal
+        document.getElementById('analyzeBtn').addEventListener('click', async function() {
+            if (!uploadedFile) {
+                alert('Please upload a file first');
+                return;
+            }
+
+            // Gather all parameters
+            const params = {
+                sample_rate: parseInt(document.getElementById('sample_rate').value),
+                window_type: document.getElementById('window_type').value,
+                use_db: document.getElementById('use_db').checked,
+                zp_factor: parseFloat(document.getElementById('zp_factor').value),
+                use_custom_nfft: document.getElementById('use_custom_nfft').checked,
+                nfft: parseInt(document.getElementById('nfft').value),
+                num_segments: parseInt(document.getElementById('num_segments').value),
+                window_size_sec: parseFloat(document.getElementById('window_size_sec').value),
+                step_size_sec: parseFloat(document.getElementById('step_size_sec').value),
+                use_stft: document.getElementById('use_stft').checked,
+                center_freq: parseFloat(document.getElementById('center_freq').value),
+                freq_band: parseFloat(document.getElementById('freq_band').value),
+                peak_threshold: parseFloat(document.getElementById('peak_threshold').value),
+                peak_min_distance: parseInt(document.getElementById('peak_min_distance').value),
+                smooth_window: parseInt(document.getElementById('smooth_window').value),
+                smooth_polyorder: parseInt(document.getElementById('smooth_polyorder').value),
+                show_full_signal: document.getElementById('show_full_signal').checked,
+                start_time: parseFloat(document.getElementById('start_time').value),
+                num_display_points: parseInt(document.getElementById('num_display_points').value)
+            };
+
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('results').classList.remove('active');
+            document.getElementById('error').style.display = 'none';
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(params)
+                });
+
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                displayResults(data);
+            } catch (error) {
+                document.getElementById('error').textContent = 'Error: ' + error.message;
+                document.getElementById('error').style.display = 'block';
+            } finally {
+                document.getElementById('loading').classList.remove('active');
+            }
+        });
+
+        function displayResults(data) {
+            const results = document.getElementById('results');
+            results.classList.add('active');
+
+            // Signal metrics
+            const metrics = data.signal_info;
+            document.getElementById('signalMetrics').innerHTML = `
+                <div class="metric-card">
+                    <div class="metric-label">Sample Rate</div>
+                    <div class="metric-value">${metrics.sample_rate.toLocaleString()} Hz</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Total Samples</div>
+                    <div class="metric-value">${metrics.total_samples.toLocaleString()}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Duration</div>
+                    <div class="metric-value">${metrics.duration.toFixed(3)} sec</div>
+                </div>
+            `;
+
+            // JSON parameters if available
+            if (data.json_params) {
+                displayJsonParams(data.json_params);
+            }
+
+            // Time plot
+            Plotly.newPlot('timePlot', data.time_plot.data, data.time_plot.layout, plotlyConfig);
+
+            // Spectrum plots
+            const spectrumDiv = document.getElementById('spectrumPlots');
+            if (data.single_segment) {
+                spectrumDiv.innerHTML = `
+                    <div class="plot-container">
+                        <h3 class="plot-title">Full Spectrum</h3>
+                        <div id="spectrumPlot"></div>
+                    </div>
+                `;
+                Plotly.newPlot('spectrumPlot', data.spectrum_plot.data, data.spectrum_plot.layout, plotlyConfig);
+            } else {
+                spectrumDiv.innerHTML = `
+                    <div class="plot-container">
+                        <h3 class="plot-title">Multi-Window FFT (${data.num_windows} windows, ${data.mode_label} mode)</h3>
+                        <div class="metric-card">
+                            <div class="metric-label">Peaks Detected</div>
+                            <div class="metric-value">${data.total_peaks_detected}</div>
+                        </div>
+                        <div id="multiSegmentPlot"></div>
+                    </div>
+                `;
+                Plotly.newPlot('multiSegmentPlot', data.multi_segment_plot.data, data.multi_segment_plot.layout, plotlyConfig);
+
+                if (data.peak_magnitude_plot) {
+                    const unit = data.analysis_params.use_db ? 'dB' : '';
+                    spectrumDiv.innerHTML += `
+                        <div class="plot-container">
+                            <h3 class="plot-title">Peak Magnitude at ${data.analysis_params.center_freq.toFixed(0)} Hz</h3>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                                <div class="metric-card">
+                                    <div class="metric-label">Mean Magnitude</div>
+                                    <div class="metric-value">${data.mean_mag.toFixed(2)} ${unit}</div>
+                                </div>
+                                <div class="metric-card">
+                                    <div class="metric-label">RMSD</div>
+                                    <div class="metric-value">${data.rmsd.toFixed(4)} ${unit}</div>
+                                </div>
+                            </div>
+                            <div id="peakMagnitudePlot"></div>
+                        </div>
+                    `;
+                    Plotly.newPlot('peakMagnitudePlot', data.peak_magnitude_plot.data, data.peak_magnitude_plot.layout, plotlyConfig);
+                }
+            }
+        }
+
+        function displayJsonParams(json_params) {
+            const div = document.getElementById('jsonParams');
+            div.style.display = 'block';
+            
+            let html = '<div class="json-params"><h4>Generation Parameters (from JSON)</h4>';
+            
+            if (json_params.signal_parameters) {
+                const sp = json_params.signal_parameters;
+                html += '<div class="param-grid">';
+                if (sp.base_frequency_hz) html += `<div class="param-item"><strong>Base Frequency:</strong> ${sp.base_frequency_hz.toFixed(1)} Hz</div>`;
+                if (sp.amplitude) html += `<div class="param-item"><strong>Amplitude:</strong> ${sp.amplitude.toFixed(3)}</div>`;
+                if (sp.duration_seconds) html += `<div class="param-item"><strong>Duration:</strong> ${sp.duration_seconds.toFixed(3)} sec</div>`;
+                if (sp.sample_rate_hz) html += `<div class="param-item"><strong>Sample Rate:</strong> ${sp.sample_rate_hz.toLocaleString()} Hz</div>`;
+                html += '</div>';
+            }
+            
+            html += '</div>';
+            div.innerHTML = html;
+        }
+
+        // Re-analyze when time controls change
+        document.getElementById('show_full_signal').addEventListener('change', function() {
+            document.getElementById('timeControls').style.display = this.checked ? 'none' : 'block';
+            if (uploadedFile && document.getElementById('results').classList.contains('active')) {
+                document.getElementById('analyzeBtn').click();
+            }
+        });
+    </script>
+</body>
+</html>
