@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from flask import Flask, render_template, request, jsonify, session, send_file
 import numpy as np
-from pathlib import Path
-from typing import Optional, Tuple
 from scipy.signal import savgol_filter
 import io
 import json
@@ -21,6 +19,7 @@ import base64
 import os
 import uuid
 from werkzeug.utils import secure_filename
+from signal_processing import load_signal, compute_fft, detect_peaks
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -29,126 +28,6 @@ app.config['UPLOAD_FOLDER'] = 'temp_uploads'
 
 # Create upload folder if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-
-
-def load_signal(file_path: str, sample_rate: int) -> Tuple[np.ndarray, int]:
-    """Load signal from file."""
-    ext = Path(file_path).suffix.lower()
-    
-    if ext == '.npy':
-        data = np.load(file_path)
-        return np.asarray(data, dtype=np.float32), sample_rate
-
-    if ext == '.raw':
-        # raw float32 little-endian
-        data = np.fromfile(file_path, dtype='<f4')
-        return data.astype(np.float32), sample_rate
-
-    # try for wav/other audio formats
-    try:
-        import soundfile as sf
-        data, sr = sf.read(file_path, always_2d=False)
-        if data.ndim == 2:
-            data = data.mean(axis=1)
-        return np.asarray(data, dtype=np.float32), int(sr)
-    except Exception as e:
-        print(f"Error loading file: {e}")
-        return np.array([]), sample_rate
-
-
-def compute_fft(
-    data: np.ndarray,
-    sample_rate: int,
-    window_samples: Optional[int] = None,
-    nfft: Optional[int] = None,
-    zp_factor: float = 1.0,
-    use_db: bool = True,
-    window_type: str = 'hanning',
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Compute FFT with windowing and zero-padding."""
-    # choose segment length
-    N = data.size if window_samples is None else min(window_samples, data.size)
-    if N <= 0:
-        return np.array([]), np.array([])
-
-    seg = data[:N].astype(np.float64)
-
-    # apply window function
-    if window_type == 'hanning':
-        win = np.hanning(N)
-    elif window_type == 'hamming':
-        win = np.hamming(N)
-    elif window_type == 'blackman':
-        win = np.blackman(N)
-    elif window_type == 'bartlett':
-        win = np.bartlett(N)
-    elif window_type == 'rectangular':
-        win = np.ones(N)
-    elif window_type == 'kaiser':
-        win = np.kaiser(N, beta=8.6)
-    elif window_type == 'gaussian':
-        try:
-            from scipy.signal.windows import gaussian
-            win = gaussian(N, std=N/6)
-        except ImportError:
-            win = np.hanning(N)
-    elif window_type == 'tukey':
-        try:
-            from scipy.signal import tukey
-            win = tukey(N, alpha=0.5)
-        except ImportError:
-            win = np.hanning(N)
-    elif window_type == 'flattop':
-        try:
-            from scipy.signal import flattop
-            win = flattop(N)
-        except ImportError:
-            win = np.hanning(N)
-    else:
-        win = np.hanning(N)
-    
-    seg_win = seg * win
-
-    # determine nfft
-    if nfft is None:
-        target = int(max(1, int(np.ceil(N * float(zp_factor)))))
-        nfft = 1 << (int(np.ceil(np.log2(target))) if target > 0 else 0)
-    nfft = max(1, int(nfft))
-
-    Y = np.fft.rfft(seg_win, n=nfft)
-    freqs = np.fft.rfftfreq(nfft, d=1.0 / sample_rate)
-    mag = np.abs(Y)
-    
-    if use_db:
-        eps = 1e-20
-        mag = 20.0 * np.log10(mag + eps)
-    
-    return freqs, mag
-
-
-def detect_peaks(y: np.ndarray, threshold: float = 10.0, min_distance: int = 5, use_db: bool = True) -> np.ndarray:
-    """Simple peak detection: find local maxima that are threshold above neighbors."""
-    if y.size < 3:
-        return np.array([], dtype=int)
-    peaks = []
-    for i in range(1, y.size - 1):
-        if y[i] > y[i-1] and y[i] > y[i+1]:
-            if use_db:
-                if y[i] > (np.mean(y) + threshold):
-                    peaks.append(i)
-            else:
-                if y[i] > (np.mean(y) * threshold):
-                    peaks.append(i)
-    if not peaks:
-        return np.array([], dtype=int)
-    peaks = np.array(peaks, dtype=int)
-    if min_distance > 1 and peaks.size > 1:
-        filtered = [peaks[0]]
-        for pk in peaks[1:]:
-            if pk - filtered[-1] >= min_distance:
-                filtered.append(pk)
-        peaks = np.array(filtered, dtype=int)
-    return peaks
 
 
 @app.route('/')
@@ -500,6 +379,197 @@ def download_report():
     # Implementation would mirror the Streamlit version
     # For brevity, returning a simple message
     return jsonify({'error': 'Not implemented yet'}), 501
+
+
+@app.route('/generate_sine', methods=['POST'])
+def generate_sine():
+    """Generate sine wave with noise and harmonics."""
+    from signal_processing import generate_sine_with_noise
+    
+    # Clean up old generated file if exists
+    if 'generated_signal_file' in session:
+        old_file = session['generated_signal_file']
+        if old_file and os.path.exists(old_file):
+            try:
+                os.remove(old_file)
+            except Exception:
+                pass
+    
+    params = request.json
+    
+    # Extract parameters
+    freq = float(params.get('freq', 15000.0))
+    duration = float(params.get('duration', 1.0))
+    sample_rate = int(params.get('sample_rate', 2000000))
+    amplitude = float(params.get('amplitude', 0.5))
+    noise_level = float(params.get('noise_level', 0.01))
+    harmonics = int(params.get('harmonics', 0))
+    harmonic_amps = params.get('harmonic_amps', None)
+    sine_stop_frac = float(params.get('sine_stop_frac', 0.85))
+    num_segments = int(params.get('num_segments', 1))
+    freq_drift = float(params.get('freq_drift', 0.0))
+    make_nonnegative = params.get('make_nonnegative', True)
+    
+    # Generate signal
+    data = generate_sine_with_noise(
+        freq=freq,
+        duration=duration,
+        sample_rate=sample_rate,
+        amplitude=amplitude,
+        noise_level=noise_level,
+        harmonics=harmonics,
+        harmonic_amps=harmonic_amps,
+        sine_stop_frac=sine_stop_frac,
+        num_segments=num_segments,
+        freq_drift=freq_drift,
+    )
+    
+    if data.size == 0:
+        return jsonify({'error': 'Failed to generate signal'}), 400
+    
+    # Make non-negative if requested
+    if make_nonnegative:
+        minv = float(np.min(data))
+        if minv < 0.0:
+            data = (data - minv).astype(np.float32)
+    
+    # Calculate statistics
+    stats = {
+        'total_samples': int(data.size),
+        'min_value': float(np.min(data)),
+        'max_value': float(np.max(data)),
+        'mean_value': float(np.mean(data)),
+        'std_value': float(np.std(data)),
+        'duration': duration,
+        'sample_rate': sample_rate,
+    }
+    
+    # Create time-domain plot
+    max_display_points = 50000
+    if data.size > max_display_points:
+        downsample_factor = data.size // max_display_points
+        time_display = np.arange(0, data.size, downsample_factor) / sample_rate
+        data_display = data[::downsample_factor]
+    else:
+        time_display = np.arange(data.size) / sample_rate
+        data_display = data
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=time_display.tolist(),
+        y=data_display.tolist(),
+        mode='lines',
+        name='Amplitude',
+        line=dict(width=1, color='steelblue')
+    ))
+    fig.update_layout(
+        xaxis_title="Time (seconds)",
+        yaxis_title="Amplitude",
+        height=400,
+        hovermode='x unified'
+    )
+    
+    # Store in temporary file for download
+    unique_id = str(uuid.uuid4())
+    temp_file = os.path.join(app.config['UPLOAD_FOLDER'], f'generated_{unique_id}.npy')
+    np.save(temp_file, data)
+    
+    # Store config and file path in session
+    session['generated_signal'] = unique_id
+    session['generated_signal_file'] = temp_file
+    session['generated_signal_config'] = params
+    
+    result = {
+        'success': True,
+        'stats': stats,
+        'plot': json.loads(plotly.io.to_json(fig)),
+        'signal_id': unique_id
+    }
+    
+    return jsonify(result)
+
+
+@app.route('/download_generated/<file_format>', methods=['GET'])
+def download_generated(file_format):
+    """Download generated signal in specified format."""
+    if 'generated_signal' not in session:
+        return jsonify({'error': 'No signal generated'}), 400
+    
+    signal_file = session.get('generated_signal_file')
+    config = session.get('generated_signal_config', {})
+    
+    if not signal_file or not os.path.exists(signal_file):
+        return jsonify({'error': 'Signal data not found'}), 400
+    
+    # Load the numpy array
+    data = np.load(signal_file)
+    
+    # Generate filename
+    freq = config.get('freq', 15000)
+    duration = config.get('duration', 1.0)
+    base_filename = f"sine_{freq:.0f}Hz_{duration:.2f}s"
+    
+    if file_format == 'npy':
+        buffer = io.BytesIO()
+        np.save(buffer, data)
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            mimetype='application/octet-stream',
+            as_attachment=True,
+            download_name=f"{base_filename}.npy"
+        )
+    elif file_format == 'raw':
+        buffer = io.BytesIO()
+        buffer.write(data.astype('<f4').tobytes())
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            mimetype='application/octet-stream',
+            as_attachment=True,
+            download_name=f"{base_filename}.raw"
+        )
+    elif file_format == 'json':
+        json_data = {
+            'signal_parameters': {
+                'base_frequency_hz': config.get('freq'),
+                'duration_seconds': config.get('duration'),
+                'sample_rate_hz': config.get('sample_rate'),
+                'amplitude': config.get('amplitude'),
+                'noise_level_sigma': config.get('noise_level'),
+            },
+            'harmonics': {
+                'number_of_harmonics': config.get('harmonics'),
+                'harmonic_amplitudes': config.get('harmonic_amps'),
+            },
+            'segmentation': {
+                'number_of_segments': config.get('num_segments'),
+                'frequency_drift_hz_per_segment': config.get('freq_drift'),
+            },
+            'processing': {
+                'sine_stop_fraction': config.get('sine_stop_frac', 0.85),
+                'make_nonnegative': config.get('make_nonnegative', True),
+            },
+            'output': {
+                'total_samples': int(data.size),
+                'data_type': str(data.dtype),
+                'min_value': float(np.min(data)),
+                'max_value': float(np.max(data)),
+                'mean_value': float(np.mean(data)),
+            },
+        }
+        
+        buffer = io.BytesIO()
+        buffer.write(json.dumps(json_data, indent=2).encode('utf-8'))
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            mimetype='application/json',
+            as_attachment=True,
+            download_name=f"{base_filename}.json"
+        )
+    else:
+        return jsonify({'error': 'Invalid format'}), 400
 
 
 if __name__ == '__main__':
