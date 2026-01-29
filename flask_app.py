@@ -87,7 +87,6 @@ def analyze():
     zp_factor = float(params.get('zp_factor', 4.0))
     use_custom_nfft = params.get('use_custom_nfft', False)
     nfft = int(params.get('nfft', 262144)) if use_custom_nfft else None
-    num_segments = int(params.get('num_segments', 1))
     window_size_sec = float(params.get('window_size_sec', 0.1))
     step_size_sec = float(params.get('step_size_sec', 0.01))
     use_stft = params.get('use_stft', False)
@@ -109,6 +108,14 @@ def analyze():
         return jsonify({'error': 'Failed to load signal data'}), 400
     
     duration = data.size / sr
+    
+    # Calculate number of segments from window and step size
+    window_samples = int(window_size_sec * sr)
+    step_samples = int(step_size_sec * sr)
+    if window_samples > 0 and step_samples > 0 and data.size > window_samples:
+        num_segments = (data.size - window_samples) // step_samples + 1
+    else:
+        num_segments = 1
     
     # Prepare signal info
     signal_info = {
@@ -154,10 +161,17 @@ def analyze():
         line=dict(width=1, color='steelblue')
     ))
     fig_signal.update_layout(
-        xaxis_title="Time (seconds)",
-        yaxis_title="Amplitude",
+        xaxis=dict(
+            title="Time (seconds)",
+            fixedrange=False
+        ),
+        yaxis=dict(
+            title="Amplitude",
+            fixedrange=False
+        ),
         height=400,
-        hovermode='x unified'
+        hovermode='closest',
+        dragmode='zoom'
     )
     
     # Perform FFT analysis
@@ -168,7 +182,8 @@ def analyze():
         'signal_info': signal_info,
         'json_params': json_params,
         'time_plot': json.loads(plotly.io.to_json(fig_signal)),
-        'analysis_params': params
+        'analysis_params': params,
+        'num_segments': num_segments
     }
     
     if segments <= 1:
@@ -183,10 +198,17 @@ def analyze():
         fig.add_trace(go.Scatter(x=freqs.tolist(), y=mag.tolist(), mode='lines', name='FFT Magnitude'))
         y_label = "Magnitude (dB)" if use_db else "Magnitude"
         fig.update_layout(
-            xaxis_title="Frequency (Hz)",
-            yaxis_title=y_label,
+            xaxis=dict(
+                title="Frequency (Hz)",
+                fixedrange=False
+            ),
+            yaxis=dict(
+                title=y_label,
+                fixedrange=False
+            ),
             height=500,
-            hovermode='x unified'
+            hovermode='closest',
+            dragmode='zoom'
         )
         
         result['spectrum_plot'] = json.loads(plotly.io.to_json(fig))
@@ -239,8 +261,17 @@ def analyze():
         fmin = center_freq - freq_band
         fmax = center_freq + freq_band
         
-        # Plot multi-segment FFT
-        fig1 = go.Figure()
+        # Plot multi-segment FFT with layout configured upfront
+        y_label = "Magnitude (dB)" if use_db else "Magnitude"
+        fig1 = go.Figure(layout=dict(
+            xaxis=dict(title="Frequency (Hz)", fixedrange=False),
+            yaxis=dict(title=y_label, fixedrange=False),
+            height=600,
+            hovermode='closest',
+            dragmode='zoom',
+            showlegend=True,
+            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(0,0,0,0.5)")
+        ))
         total_peaks_detected = 0
         all_segment_data = []
         
@@ -293,14 +324,6 @@ def analyze():
                             ))
             
             all_segment_data.append((i + 1, freqs_win, mag_win, detected_peaks))
-        
-        y_label = "Magnitude (dB)" if use_db else "Magnitude"
-        fig1.update_layout(
-            xaxis_title="Frequency (Hz)",
-            yaxis_title=y_label,
-            height=600,
-            hovermode='x unified'
-        )
         
         # Peak magnitude plot
         seg_nums = []
@@ -355,10 +378,17 @@ def analyze():
             ))
             
             fig2.update_layout(
-                xaxis_title="Segment Number",
-                yaxis_title=y_label,
+                xaxis=dict(
+                    title="Segment Number",
+                    fixedrange=False
+                ),
+                yaxis=dict(
+                    title=y_label,
+                    fixedrange=False
+                ),
                 height=400,
-                hovermode='x unified'
+                hovermode='closest',
+                dragmode='zoom'
             )
         
         result['multi_segment_plot'] = json.loads(plotly.io.to_json(fig1))
@@ -463,10 +493,17 @@ def generate_sine():
         line=dict(width=1, color='steelblue')
     ))
     fig.update_layout(
-        xaxis_title="Time (seconds)",
-        yaxis_title="Amplitude",
+        xaxis=dict(
+            title="Time (seconds)",
+            fixedrange=False
+        ),
+        yaxis=dict(
+            title="Amplitude",
+            fixedrange=False
+        ),
         height=400,
-        hovermode='x unified'
+        hovermode='closest',
+        dragmode='zoom'
     )
     
     # Store in temporary file for download

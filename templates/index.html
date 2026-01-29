@@ -473,16 +473,15 @@
                 <div class="section">
                     <h3>Segmentation</h3>
                     <div class="form-group">
-                        <label for="num_segments">Number of Segments</label>
-                        <input type="number" id="num_segments" value="10" min="1" max="1000" step="1">
-                    </div>
-                    <div class="form-group">
                         <label for="window_size_sec">Window Size (seconds)</label>
                         <input type="number" id="window_size_sec" value="0.1" min="0.001" max="10.0" step="0.01">
                     </div>
                     <div class="form-group">
                         <label for="step_size_sec">Step Size (seconds)</label>
-                        <input type="number" id="step_size_sec" value="0.01" min="0.001" max="10.0" step="0.01">
+                        <input type="number" id="step_size_sec" value="0.1" min="0.001" max="10.0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <p class="help-text" id="calculated_segments">Segments will be calculated automatically</p>
                     </div>
                     <div class="form-group">
                         <label class="checkbox-label">
@@ -733,9 +732,39 @@
         const plotlyConfig = {
             responsive: true,
             displayModeBar: true,
-            modeBarButtonsToAdd: ['drawopenpath', 'eraseshape'],
+            modeBarButtonsToAdd: [
+                'drawopenpath', 
+                'eraseshape',
+                'v1hovermode',
+                'toggleSpikelines'
+            ],
             modeBarButtonsToRemove: [],
             displaylogo: false,
+            scrollZoom: true,
+            toImageButtonOptions: {
+                format: 'png',
+                filename: 'spectrum_plot',
+                height: 1080,
+                width: 1920,
+                scale: 2
+            }
+        };
+
+        // Enhanced config for multi-segment plots with more interaction
+        const plotlyConfigEnhanced = {
+            responsive: true,
+            displayModeBar: true,
+            modeBarButtonsToAdd: [
+                'select2d',
+                'lasso2d',
+                'drawopenpath',
+                'eraseshape',
+                'v1hovermode',
+                'toggleSpikelines'
+            ],
+            modeBarButtonsToRemove: [],
+            displaylogo: false,
+            scrollZoom: true,
             toImageButtonOptions: {
                 format: 'png',
                 filename: 'spectrum_plot',
@@ -828,7 +857,6 @@
                 zp_factor: parseFloat(document.getElementById('zp_factor').value),
                 use_custom_nfft: document.getElementById('use_custom_nfft').checked,
                 nfft: parseInt(document.getElementById('nfft').value),
-                num_segments: parseInt(document.getElementById('num_segments').value),
                 window_size_sec: parseFloat(document.getElementById('window_size_sec').value),
                 step_size_sec: parseFloat(document.getElementById('step_size_sec').value),
                 use_stft: document.getElementById('use_stft').checked,
@@ -918,10 +946,24 @@
                             <div class="metric-label">Peaks Detected</div>
                             <div class="metric-value">${data.total_peaks_detected}</div>
                         </div>
+                        <div class="info-box" style="margin: 15px 0;">
+                            <strong>Interactive Controls:</strong>
+                            <ul style="margin: 5px 0 0 20px; font-size: 0.9em;">
+                                <li>🔍 Scroll to zoom in/out</li>
+                                <li>🖱️ Click and drag to pan</li>
+                                <li>📦 Box select: select traces by dragging a box</li>
+                                <li>🎯 Double-click to reset view</li>
+                                <li>📌 Click legend items to show/hide traces</li>
+                            </ul>
+                        </div>
                         <div id="multiSegmentPlot"></div>
                     </div>
                 `;
-                Plotly.newPlot('multiSegmentPlot', data.multi_segment_plot.data, data.multi_segment_plot.layout, plotlyConfig);
+                
+                // Wait for DOM then create plot
+                setTimeout(() => {
+                    Plotly.react('multiSegmentPlot', data.multi_segment_plot.data, data.multi_segment_plot.layout, plotlyConfig);
+                }, 100);
 
                 if (data.peak_magnitude_plot) {
                     const unit = data.analysis_params.use_db ? 'dB' : '';
@@ -941,7 +983,17 @@
                             <div id="peakMagnitudePlot"></div>
                         </div>
                     `;
-                    Plotly.newPlot('peakMagnitudePlot', data.peak_magnitude_plot.data, data.peak_magnitude_plot.layout, plotlyConfig);
+                    
+                    // Ensure layout allows zooming
+                    const peakMagLayout = data.peak_magnitude_plot.layout;
+                    peakMagLayout.dragmode = 'zoom';
+                    if (!peakMagLayout.xaxis) peakMagLayout.xaxis = {};
+                    if (!peakMagLayout.yaxis) peakMagLayout.yaxis = {};
+                    peakMagLayout.xaxis.fixedrange = false;
+                    peakMagLayout.yaxis.fixedrange = false;
+                    
+                    // Create the plot
+                    Plotly.newPlot('peakMagnitudePlot', data.peak_magnitude_plot.data, peakMagLayout, plotlyConfigEnhanced);
                 }
             }
         }
