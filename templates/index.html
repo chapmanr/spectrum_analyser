@@ -485,7 +485,7 @@
                     </div>
                     <div class="form-group">
                         <label class="checkbox-label">
-                            <input type="checkbox" id="use_stft">
+                            <input type="checkbox" id="use_stft" checked>
                             Use STFT Mode
                         </label>
                         <p class="help-text">STFT: sliding windows, STORI: expanding windows</p>
@@ -519,6 +519,12 @@
 
                 <div class="section">
                     <h3>Smoothing</h3>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="use_smoothing" checked>
+                            Enable Smoothing Before Peak Detection
+                        </label>
+                    </div>
                     <div class="form-group">
                         <label for="smooth_window">Smoothing Window</label>
                         <input type="number" id="smooth_window" value="11" min="3" max="51" step="2">
@@ -820,6 +826,17 @@
                     body: formData
                 });
 
+                if (!response.ok) {
+                    let errorMsg = `Server error: ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorMsg;
+                    } catch (e) {
+                        errorMsg = response.statusText || errorMsg;
+                    }
+                    throw new Error(errorMsg);
+                }
+
                 const data = await response.json();
                 
                 if (data.success) {
@@ -864,6 +881,7 @@
                 freq_band: parseFloat(document.getElementById('freq_band').value),
                 peak_threshold: parseFloat(document.getElementById('peak_threshold').value),
                 peak_min_distance: parseInt(document.getElementById('peak_min_distance').value),
+                use_smoothing: document.getElementById('use_smoothing').checked,
                 smooth_window: parseInt(document.getElementById('smooth_window').value),
                 smooth_polyorder: parseInt(document.getElementById('smooth_polyorder').value),
                 show_full_signal: document.getElementById('show_full_signal').checked,
@@ -883,6 +901,17 @@
                     },
                     body: JSON.stringify(params)
                 });
+
+                if (!response.ok) {
+                    let errorMsg = `Server error: ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorMsg;
+                    } catch (e) {
+                        errorMsg = response.statusText || errorMsg;
+                    }
+                    throw new Error(errorMsg);
+                }
 
                 const data = await response.json();
                 
@@ -995,6 +1024,81 @@
                     // Create the plot
                     Plotly.newPlot('peakMagnitudePlot', data.peak_magnitude_plot.data, peakMagLayout, plotlyConfigEnhanced);
                 }
+                
+                // Display filtered peaks list (highest magnitude per segment)
+                if (data.filtered_peaks_list && data.filtered_peaks_list.length > 0) {
+                    const unit = data.analysis_params.use_db ? 'dB' : '';
+                    let filteredPeaksHtml = `
+                        <div class="plot-container">
+                            <h3 class="plot-title">Highest Peaks per Segment (${data.filtered_peaks_list.length} segments)</h3>
+                            <p style="color: #9cdcfe; margin-bottom: 15px; font-size: 0.9em;">Showing only the peak with the highest magnitude for each segment</p>
+                            <div style="max-height: 400px; overflow-y: auto; border: 1px solid #3c3c3c; border-radius: 4px; background: #2d2d30;">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <thead style="position: sticky; top: 0; background: #1e1e1e; z-index: 10;">
+                                        <tr style="border-bottom: 2px solid #3c3c3c;">
+                                            <th style="padding: 12px; text-align: left; color: #4ec9b0;">Segment</th>
+                                            <th style="padding: 12px; text-align: right; color: #4ec9b0;">Frequency (Hz)</th>
+                                            <th style="padding: 12px; text-align: right; color: #4ec9b0;">Magnitude ${unit}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>`;
+                    
+                    data.filtered_peaks_list.forEach((peak, idx) => {
+                        const rowBg = idx % 2 === 0 ? '#2d2d30' : '#252526';
+                        filteredPeaksHtml += `
+                                        <tr style="border-bottom: 1px solid #3c3c3c; background: ${rowBg};">
+                                            <td style="padding: 10px; color: #dcdcaa;">${peak.segment}</td>
+                                            <td style="padding: 10px; text-align: right; color: #ce9178;">${peak.frequency.toFixed(2)}</td>
+                                            <td style="padding: 10px; text-align: right; color: #b5cea8;">${peak.magnitude.toFixed(2)}</td>
+                                        </tr>`;
+                    });
+                    
+                    filteredPeaksHtml += `
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                    spectrumDiv.innerHTML += filteredPeaksHtml;
+                }
+                
+                // Display all peaks list if available
+                if (data.peaks_list && data.peaks_list.length > 0) {
+                    const unit = data.analysis_params.use_db ? 'dB' : '';
+                    let peaksHtml = `
+                        <div class="plot-container">
+                            <h3 class="plot-title">All Detected Peaks (${data.peaks_list.length} total)</h3>
+                            <div style="max-height: 400px; overflow-y: auto; border: 1px solid #3c3c3c; border-radius: 4px; background: #2d2d30;">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <thead style="position: sticky; top: 0; background: #1e1e1e; z-index: 10;">
+                                        <tr style="border-bottom: 2px solid #3c3c3c;">
+                                            <th style="padding: 12px; text-align: left; color: #4ec9b0;">#</th>
+                                            <th style="padding: 12px; text-align: left; color: #4ec9b0;">Segment</th>
+                                            <th style="padding: 12px; text-align: right; color: #4ec9b0;">Frequency (Hz)</th>
+                                            <th style="padding: 12px; text-align: right; color: #4ec9b0;">Magnitude ${unit}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>`;
+                    
+                    data.peaks_list.forEach((peak, idx) => {
+                        const rowBg = idx % 2 === 0 ? '#2d2d30' : '#252526';
+                        peaksHtml += `
+                                        <tr style="border-bottom: 1px solid #3c3c3c; background: ${rowBg};">
+                                            <td style="padding: 10px; color: #9cdcfe;">${idx + 1}</td>
+                                            <td style="padding: 10px; color: #dcdcaa;">${peak.segment}</td>
+                                            <td style="padding: 10px; text-align: right; color: #ce9178;">${peak.frequency.toFixed(2)}</td>
+                                            <td style="padding: 10px; text-align: right; color: #b5cea8;">${peak.magnitude.toFixed(2)}</td>
+                                        </tr>`;
+                    });
+                    
+                    peaksHtml += `
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                    spectrumDiv.innerHTML += peaksHtml;
+                }
             }
         }
 
@@ -1098,6 +1202,18 @@
                     },
                     body: JSON.stringify(params)
                 });
+
+                if (!response.ok) {
+                    let errorMsg = `Server error: ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorMsg;
+                    } catch (e) {
+                        // If parsing fails, use status text
+                        errorMsg = response.statusText || errorMsg;
+                    }
+                    throw new Error(errorMsg);
+                }
 
                 const data = await response.json();
 

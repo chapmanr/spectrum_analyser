@@ -25,6 +25,8 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
 app.config['UPLOAD_FOLDER'] = 'temp_uploads'
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True if using HTTPS
 
 # Create upload folder if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -94,6 +96,7 @@ def analyze():
     freq_band = float(params.get('freq_band', 1000))
     peak_threshold = float(params.get('peak_threshold', 10.0))
     peak_min_distance = int(params.get('peak_min_distance', 8))
+    use_smoothing = params.get('use_smoothing', True)
     smooth_window = int(params.get('smooth_window', 11))
     smooth_polyorder = int(params.get('smooth_polyorder', 3))
     show_full_signal = params.get('show_full_signal', False)
@@ -297,7 +300,7 @@ def analyze():
             detected_peaks = []
             if mag_win.size >= 3:
                 mag_smoothed = mag_win.copy()
-                if mag_smoothed.size >= smooth_window:
+                if use_smoothing and mag_smoothed.size >= smooth_window:
                     mag_smoothed = savgol_filter(mag_smoothed, smooth_window, smooth_polyorder)
                     mag_smoothed = savgol_filter(mag_smoothed, smooth_window, smooth_polyorder)
                 
@@ -325,36 +328,38 @@ def analyze():
             
             all_segment_data.append((i + 1, freqs_win, mag_win, detected_peaks))
         
-        # Peak magnitude plot
-        seg_nums = []
-        mags = []
-        peak_window = 5.0
+        # Collect all peaks for display and track highest peak per segment
+        all_peaks_list = []
+        peaks_by_segment = {}  # Track highest peak per segment
         
         for seg_num, freqs_win, mag_win, detected_peaks in all_segment_data:
-            if freqs_win.size == 0 or mag_win.size == 0:
-                continue
-            
-            best_mag = None
-            
-            if detected_peaks:
-                peaks_near_center = [(pk_freq, pk_mag) for pk_freq, pk_mag in detected_peaks 
-                                    if abs(pk_freq - center_freq) <= peak_window]
-                if peaks_near_center:
-                    peaks_near_center.sort(key=lambda x: abs(x[0] - center_freq))
-                    best_mag = peaks_near_center[0][1]
-            
-            if best_mag is None:
-                closest_idx = np.argmin(np.abs(freqs_win - center_freq))
-                best_mag = mag_win[closest_idx]
-            
-            seg_nums.append(seg_num)
-            mags.append(float(best_mag))
+            for pk_freq, pk_mag in detected_peaks:
+                all_peaks_list.append({
+                    'segment': seg_num,
+                    'frequency': pk_freq,
+                    'magnitude': pk_mag
+                })
+                
+                # Track highest magnitude peak per segment
+                if seg_num not in peaks_by_segment or pk_mag > peaks_by_segment[seg_num]['magnitude']:
+                    peaks_by_segment[seg_num] = {
+                        'segment': seg_num,
+                        'frequency': pk_freq,
+                        'magnitude': pk_mag
+                    }
         
+        # Create filtered list sorted by segment number
+        filtered_peaks_list = sorted(peaks_by_segment.values(), key=lambda x: x['segment'])
+        
+        # Peak magnitude plot - use filtered peaks list (highest magnitude per segment)
         fig2 = None
         mean_mag = None
         rmsd = None
         
-        if seg_nums:
+        if filtered_peaks_list:
+            seg_nums = [p['segment'] for p in filtered_peaks_list]
+            mags = [p['magnitude'] for p in filtered_peaks_list]
+            
             mags_array = np.array(mags)
             mean_mag = float(np.mean(mags_array))
             rmsd = float(np.sqrt(np.mean((mags_array - mean_mag) ** 2)))
@@ -394,6 +399,8 @@ def analyze():
         result['multi_segment_plot'] = json.loads(plotly.io.to_json(fig1))
         result['peak_magnitude_plot'] = json.loads(plotly.io.to_json(fig2)) if fig2 else None
         result['total_peaks_detected'] = total_peaks_detected
+        result['peaks_list'] = all_peaks_list
+        result['filtered_peaks_list'] = filtered_peaks_list
         result['num_windows'] = len(all_freqs)
         result['mean_mag'] = mean_mag
         result['rmsd'] = rmsd
