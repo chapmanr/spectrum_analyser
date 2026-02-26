@@ -34,7 +34,7 @@ noise_post = rng.normal(0, noise_amplitude, size=samples_decimated)
 ydem_noisy_post = ydem + noise_post
 
 
-fig, axes = plt.subplots(4, 1, figsize=(10, 10), sharex=True)
+fig, axes = plt.subplots(5, 1, figsize=(10, 12))
 
 axes[0].plot(x, y, '.-')
 axes[0].set_title('Original signal (no noise)')
@@ -48,10 +48,40 @@ axes[2].plot(xnew, ydem_from_noisy, 'o-')
 axes[2].set_title('After decimating the noisy signal (anti-alias filter attenuates noise)')
 axes[2].set_ylabel('Amplitude')
 
-axes[3].plot(xnew, ydem_noisy_post, 'o-')
-axes[3].set_title(f'Clean decimation + white noise AFTER decimation (amplitude={noise_amplitude})')
-axes[3].set_ylabel('Amplitude')
-axes[3].set_xlabel('Time, Seconds')
+# FFT of decimated noisy signal with Hann window and zero padding (4x)
+hann_window_dec = np.hanning(len(ydem_from_noisy))
+y_dec_windowed = ydem_from_noisy * hann_window_dec
+
+# Zero padding to 4 times the original length
+n_fft_dec = len(y_dec_windowed) * 4
+y_dec_fft = np.fft.fft(y_dec_windowed, n_fft_dec)
+freqs_dec = np.fft.fftfreq(n_fft_dec, 1/(sample_rate/q))  # Use decimated sample rate
+
+# Only plot positive frequencies
+positive_freqs_dec = freqs_dec[:n_fft_dec//2]
+magnitude_dec = np.abs(y_dec_fft[:n_fft_dec//2])
+
+axes[3].plot(positive_freqs_dec, magnitude_dec)
+axes[3].set_title('FFT of decimated noisy signal (Hann window, 4x zero padding)')
+axes[3].set_ylabel('Magnitude')
+
+# FFT of undecimated noisy signal with Hann window and zero padding (4x)
+hann_window_noisy = np.hanning(len(y_noisy_pre))
+y_noisy_windowed = y_noisy_pre * hann_window_noisy
+
+# Zero padding to 4 times the original length
+n_fft_noisy = len(y_noisy_windowed) * 4
+y_noisy_fft = np.fft.fft(y_noisy_windowed, n_fft_noisy)
+freqs_noisy = np.fft.fftfreq(n_fft_noisy, 1/sample_rate)
+
+# Only plot positive frequencies
+positive_freqs_noisy = freqs_noisy[:n_fft_noisy//2]
+magnitude_noisy = np.abs(y_noisy_fft[:n_fft_noisy//2])
+
+axes[4].plot(positive_freqs_noisy, magnitude_noisy)
+axes[4].set_title('FFT of undecimated noisy signal (Hann window, 4x zero padding)')
+axes[4].set_ylabel('Magnitude')
+axes[4].set_xlabel('Frequency, Hz')
 
 plt.tight_layout()
 plt.show()
