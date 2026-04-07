@@ -223,7 +223,7 @@ def generate_sine_with_noise(
         if harmonics and harmonics > 0:
             provided = list(harmonic_amps) if harmonic_amps else []
             for i in range(1, harmonics + 1):
-                h_freq = freq * (i + 1)
+                h_freq = freq * (2 ** i)
                 if i - 1 < len(provided):
                     h_amp = float(provided[i - 1])
                 else:
@@ -256,7 +256,7 @@ def generate_sine_with_noise(
             if harmonics and harmonics > 0:
                 provided = list(harmonic_amps) if harmonic_amps else []
                 for i in range(1, harmonics + 1):
-                    h_freq = current_freq * (i + 1)
+                    h_freq = current_freq * (2 ** i)
                     if i - 1 < len(provided):
                         h_amp = float(provided[i - 1])
                     else:
